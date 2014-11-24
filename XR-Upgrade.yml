@@ -1,0 +1,15 @@
+---
+  - name: IOS-XR Software Upgrade
+    hosts: PS_ASR9001
+    gather_facts: no
+    connection: local
+  
+    tasks:
+    - name: 1. File Transfer using SFTP
+      SFTP_Transfer:
+       host={{inventory_hostname}}
+
+    - name: 2. Upgrading Node(s)
+      Install:
+       host={{inventory_hostname}}
+

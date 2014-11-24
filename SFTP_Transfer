@@ -1,0 +1,47 @@
+#!/usr/bin/python
+
+import sys
+sys.path.append('/usr/share/ansible')
+from ansible.module_utils.basic import *
+from Connect import Connect
+import logging
+
+result = {}
+module = AnsibleModule(
+	argument_spec=dict(
+	host=dict(required=True)
+	),
+	supports_check_mode = False
+)
+
+host = module.params['host']
+
+l = open("/home/amit/ANSIBLE/files/ASR9K.txt").read().strip('\n').splitlines()
+
+try:
+    c = Connect(host)
+    time.sleep(2)
+    sftp = c.ssh.open_sftp()
+    for filename in l:
+        SRC = "/home/amit/ANSIBLE/files/" + filename
+        DST = "disk0:/"+filename
+        try:        
+            if sftp.stat(DST):
+                logging.info('File %r already present on %s' % (filename,host))
+                result['ok'] = True
+
+        except IOError:
+            logging.info("COPY START: %r to %r" % (filename,host))
+            sftp.put(SRC,DST)
+            logging.info("COPY END: %r to %r" % (filename,host))
+            result['changed'] = True
+
+except Exception as e:
+    logging.error("Exception caught : %r" % str(e))
+    result['failed'] = True
+    module.fail_json(msg="Could not copy files due to exception %r" % str(e))
+
+finally:
+    sftp.close()
+    c.ssh.close()
+    module.exit_json(**result)

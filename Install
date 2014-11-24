@@ -1,0 +1,224 @@
+#!/usr/bin/python
+
+import paramiko
+import logging
+import time
+import re
+from Connect import Connect
+from ansible.module_utils.basic import *
+
+
+class InstallAddError:
+    def __init__(self,value):
+        self.value = value
+	logging.error("Install Add Error %s" % self.value)
+
+class InstallActivateError:
+    def __init__(self,value):
+        self.value = value
+	logging.error("Install Activate Error %s" % self.value)
+
+class NoValidPackageToInstall:
+    def __init__(self):
+        logging.info("No valid packages to install")
+
+
+
+to_install_pkglist = []
+to_activate_pkglist = []
+
+module = AnsibleModule(
+	argument_spec 	= dict(
+	host 		= dict(required=True)
+	),
+	supports_check_mode = False
+)
+
+
+host = module.params['host']
+result = {}
+
+
+try:
+    c = Connect(host)
+    time.sleep(2)
+    chan = c.ssh.invoke_shell()
+    c.ssh.get_transport().set_keepalive(1)
+
+
+#### Check what is currently installed
+
+    chan.send('terminal length 0\n')
+    chan.send('admin show install active summary\n')
+    time.sleep(10)
+    while chan.recv_ready():
+        active_pkg = chan.recv(9999)
+
+    active_pkglist = active_pkg.split()
+
+
+#### Check if package is already installed
+#### If so, do not add to the list
+
+    files = open('/home/amit/ANSIBLE/files/ASR9K.txt').read().strip('\n').splitlines()
+    for filename in files:
+        i = False
+        for pkg in active_pkglist:
+            if filename.strip('.pie') in pkg:
+	        i = True
+		break
+	if i is False:        
+	    filename = 'disk0:'+filename
+	    to_install_pkglist.append(filename)
+	   
+    to_install = ' '.join(to_install_pkglist)
+
+    if len(to_install_pkglist) == 0:
+	    raise NoValidPackageToInstall
+    else:
+#### Try executing "admin install add <packages>" command
+    
+        try:
+            cmd = 'admin install add %s \n' % to_install
+	    chan.send(cmd)
+            logging.info('CONFIGOUT : %s' % cmd)
+            i = True
+            while i == True:
+                if chan.recv_ready():
+                    resp = chan.recv(9999)
+	            if 'Error' in resp:
+			err = re.search(r'Error: (.+)', resp) 
+	                raise InstallAddError(err.group())
+                        i = False
+                    elif 'Invalid' in resp:
+			err = re.search(r'Invalid (.+)', resp) 
+	                raise InstallAddError(err.group())
+                        i = False
+                    elif "success" in resp:
+                        s = re.search(r'Install (.+)', resp) 
+                        logging.info(s.group().upper())
+                        i = False
+	            else:
+		        logging.info(resp)
+
+            time.sleep(1)
+            cmd = 'admin show install inactive summary\n'
+            chan.send(cmd)
+            time.sleep(15)
+            while chan.recv_ready():
+                inactive_pkg = chan.recv(9999)
+                
+            inactive_pkglist = inactive_pkg.split()
+
+            for filename in files:
+                for pkg in inactive_pkglist:
+                    if filename.strip('.pie') in pkg:
+	                to_activate_pkglist.append(pkg)
+    
+            to_activate = ' '.join(to_activate_pkglist)
+
+
+#### Once Install Add is successful,
+#### try executing "admin install activate <packages>" command
+
+            try:
+	        cmd = 'admin install activate %s prompt-level none\n' % to_activate
+                chan.send(cmd)
+                logging.info('CONFIGOUT : %s' % cmd)
+                i = True
+		
+                while i == True:
+	 	    if chan.recv_ready():
+                        resp = chan.recv(9999)
+	                if 'Error' in resp:
+                            err = re.search(r'Error: (.+)', resp) 
+	                    raise InstallActivateError(err.group())
+			    i = False
+                        elif 'Invalid' in resp:
+			    err = re.search(r'Invalid (.+)', resp) 
+	                    raise InstallActivateError(err.group())
+                            i = False
+			elif "success" in resp:
+                            s = re.search(r'Install (.+)', resp) 
+			    logging.info(s.group().upper())
+                            i = False
+                            c.ssh.close()
+
+#### Wait for 60 seconds and then try reconnecting
+                            logging.info('WAITING 60 seconds')
+                            time.sleep(60)
+
+                        else:
+                            logging.info(resp)
+
+
+                logging.info('CHECKING TO SEE IF ROUTER REBOOTED')
+
+                t = 0
+                while True and t<10:
+                    try:
+                        c = Connect(host)
+                        if c.ssh.get_transport():
+                            t=10
+                            break
+                    except:
+                        pass
+		    else:
+                        if t==0:
+                            logging.info('---IT SEEMS ROUTER REBOOTED-------------------')
+                            logging.info('---TRYING TO RECONNECT FOR APPROX 10 MINS-----')
+			time.sleep(60)
+		        t+=1
+
+
+
+#### if channel is re-available, perform "admin install commit"
+#### else exit out
+
+		if c.ssh.get_transport():
+ 		    chan = c.ssh.invoke_shell()
+                    logging.info('---WAITING ADDITIONAL 5 MINS FOR ROUTER TO POWER ALL CARDS----')
+                    time.sleep(300)
+		    cmd = 'admin install commit\n'
+                    chan.send(cmd)
+                    logging.info('CONFIGOUT : %s' % cmd)
+                    time.sleep(2)
+                    i = True
+     	            while i == True:
+	 	        if chan.recv_ready():
+                            resp = chan.recv(9999)
+	                    if 'Error' in resp:
+                                logging.info(resp.upper())
+                                result['failed'] = True
+	                        i = False
+			    elif "success" in resp:
+                                s = re.search(r'Install (.+)', resp) 
+			        logging.info(s.group().upper())
+	                        result['changed'] = True
+			        i = False
+  	                    else:
+		                logging.info(resp)
+
+
+		else:
+		    result['failed'] = True
+		    module.fail_json(msg="Failed to reconnect")
+
+	    except InstallActivateError:
+                result['failed'] = True
+	        module.fail_json(msg="Error activating package")
+
+        except InstallAddError:
+            result['failed'] = True
+	    module.fail_json(msg="Error adding package")
+            
+except NoValidPackageToInstall:
+    result['ok'] = True
+
+except Exception as e:
+    result['failed'] = True
+    module.fail_json(msg="%s" % str(e))
+
+finally:
+    c.ssh.close()
+    module.exit_json(**result)
