@@ -1,0 +1,58 @@
+#!/usr/bin/python
+
+from Connect import Connect
+import logging
+import time
+import pickle
+import re
+import os
+from ansible.module_utils.basic import *
+
+module = AnsibleModule(
+	argument_spec 	= dict(
+	host 		= dict(required=True)
+	),
+	supports_check_mode = False
+)
+
+host = module.params['host']
+
+c = Connect(host)
+time.sleep(1)
+chan = c.ssh.invoke_shell()
+
+chan.send('terminal length 0\n')
+pkl_file = '/home/amit/ANSIBLE/files/logs/' + host + '-facts.pkl'
+with open(pkl_file,'wb') as f:
+    chan.send('show version\n')
+    time.sleep(3)
+    output = chan.recv(10000)
+    pickle.dump(output,f)
+    
+
+with open(pkl_file,'rb') as f:
+    output = pickle.load(f)
+    c.hostname = re.search(r'(.+) uptime is', output).group(1).strip()
+    c.software = re.search(r'Cisco (.+) Software,', output).group(1)
+    if c.software == "IOS XR":
+        c.version = re.search(r'Version (\d.\d.\d)', output).group(1)
+    else:
+        c.version = re.search(r'Version (.+?),', output).group(1)
+    if c.software == "IOS XR":
+        c.chassis = re.search(r'(.+) Chassis', output).group(1)
+    else:
+        c.chassis = re.search(r'cisco (.+) \(', output).group(1)
+    c.uptime = re.search(r'(.+) uptime is (.+)', output).group(2)
+
+facts = dict()
+facts['host'] = host
+facts['hostname'] = getattr(c,'hostname')
+facts['software'] = getattr(c,'software')
+facts['version'] = getattr(c,'version')
+facts['chassis'] = getattr(c,'chassis')
+facts['uptime'] = getattr(c,'uptime')
+
+os.remove(pkl_file)
+c.ssh.close()
+module.exit_json(**facts)
+
