@@ -154,6 +154,7 @@ try:
 
                 logging.info('CHECKING TO SEE IF ROUTER REBOOTED')
 
+                dev_reboot = False
                 t = 0
                 while True and t<10:
                     try:
@@ -167,6 +168,7 @@ try:
                         if t==0:
                             logging.info('---IT SEEMS ROUTER REBOOTED-------------------')
                             logging.info('---TRYING TO RECONNECT FOR APPROX 10 MINS-----')
+                            dev_reboot = True
 			time.sleep(60)
 		        t+=1
 
@@ -177,8 +179,9 @@ try:
 
 		if c.ssh.get_transport():
  		    chan = c.ssh.invoke_shell()
-                    logging.info('---WAITING ADDITIONAL 5 MINS FOR ROUTER TO POWER ALL CARDS----')
-                    time.sleep(300)
+                    if dev_reboot:
+                        logging.info('---WAITING 10 MINS FOR ROUTER TO POWER ALL CARDS----')
+                        time.sleep(600)
 		    cmd = 'admin install commit\n'
                     chan.send(cmd)
                     logging.info('CONFIGOUT : %s' % cmd)
