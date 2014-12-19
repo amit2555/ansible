@@ -24,7 +24,7 @@ try:
     sftp = c.ssh.open_sftp()
     for filename in l:
         SRC = "/home/amit/ANSIBLE/files/" + filename
-        DST = "disk0:/"+filename
+        DST = "harddisk:/"+filename
         try:        
             if sftp.stat(DST):
                 logging.info('File %r already present on %s' % (filename,host))

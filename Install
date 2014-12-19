@@ -68,7 +68,7 @@ try:
 	        i = True
 		break
 	if i is False:        
-	    filename = 'disk0:'+filename
+	    filename = 'harddisk:'+filename
 	    to_install_pkglist.append(filename)
 	   
     to_install = ' '.join(to_install_pkglist)
