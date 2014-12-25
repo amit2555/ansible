@@ -1,0 +1,33 @@
+#!/usr/bin/python
+
+from Connect import Connect
+import logging
+import time
+from ansible.module_utils.basic import *
+
+result = dict()
+
+module = AnsibleModule(
+	argument_spec 	= dict(
+	host 		= dict(required=True),
+	filename	= dict(required=True)
+	),
+	supports_check_mode = False
+)
+
+host = module.params['host']
+filename = module.params['filename']
+
+c = Connect(host)
+time.sleep(1)
+stdin,stdout,stderr = c.ssh.exec_command('show run\n')
+time.sleep(5)
+
+output = stdout.read().strip('\n').splitlines()
+
+with open(filename,'wb') as f:
+	for line in output[7:]:
+		f.write(line+'\n')
+	result['ok'] = True
+
+module.exit_json(**result)

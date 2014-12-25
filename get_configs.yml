@@ -1,0 +1,18 @@
+---
+  - name: Get Configs
+    hosts: 
+     - PS_IOS
+     - PS_ASR9001
+     - PS_NCR
+    gather_facts: no
+    connection: local
+
+    tasks:
+    - name: Gathering Facts
+      gather_facts: host={{ inventory_hostname }}
+      register: facts
+    - name: Fetch Running Config
+      get_config:
+       host={{ inventory_hostname }}
+       filename=/home/amit/GitRepo/PS_NCN/{{ facts.hostname }}.txt
+
