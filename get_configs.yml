@@ -14,5 +14,5 @@
     - name: Fetch Running Config
       get_config:
        host={{ inventory_hostname }}
-       filename=/home/amit/GitRepo/PS_NCN/{{ facts.hostname }}.txt
+       filename=/home/amit/GitRepo/Configs/{{ facts.hostname }}.txt
 
